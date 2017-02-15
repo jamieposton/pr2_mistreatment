@@ -64,9 +64,9 @@ def main():
             valid = False
             while not valid:
                itemNum = -1
-               userInput = raw_input("\nEnter item number, or enter 0 to prompt again: "
+               userInput = raw_input("\nEnter item number, or enter 0 to prompt again: ")
                if is_number(userInput):
-                  itemNum = int(userInput).strip())
+                  itemNum = int(userInput.strip())
 
                if itemNum >= 0 and itemNum < 11:
                   valid = True
@@ -133,7 +133,6 @@ def main():
             # If this is test 1,2,4 then give the happy response
             if i == 1 or i == 2 or i == 4:
                wizard.send("happy 0")
-               print "Happy face shown"
 
                # Wait for continue message
                ignore = wizard.recv(size)
@@ -141,7 +140,6 @@ def main():
             # Else give the sad response based on the trial number
             else:
                wizard.send("sad " + str(i))
-               print "Sad face shown"
 
                # Wait for continue message
                ignore = wizard.recv(size)

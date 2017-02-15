@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Baxter Mistreatment
+PR2 Mistreatment
 """
 import argparse
 import sys
@@ -16,7 +16,10 @@ from trajectory_msgs.msg import (
     JointTrajectoryPoint,
 )
 
-from pr2_controllers_msgs.msg import JointTrajectoryAction, JointTrajectoryActionGoal
+from control_msgs.msg import (
+    FollowJointTrajectoryAction, 
+    FollowJointTrajectoryGoal,
+) 
 
 from sensor_msgs.msg import (
     Image,
@@ -45,20 +48,23 @@ def main():
                                      description=main.__doc__)
     required = parser.add_argument_group('required arguments')
     required.add_argument(
-        '-l', '--limb', required=False, choices=['l_', 'r_'],
+        '-l', '--limb', required=False, choices=['l', 'r'],
         help='send joint trajectory to which limb'
     )
     args = parser.parse_args(rospy.myargv()[1:])
     limb = args.limb
-    if limb == None: limb = 'l_'
+    if limb == None: limb = 'l'
+
+    print("Initializing node... ")
+    rospy.init_node("pr2_mistreatment")
     print("Running. Ctrl-c to quit")
 
     otherLimb = ""
-    if limb == 'l_':
-        otherLimb = 'r_'
+    if limb == 'l':
+        otherLimb = 'r'
     else:
-        otherLimb = 'l_'
-    
+        otherLimb = 'l'
+
     traj = Trajectory(limb)
     trajOther = Trajectory(otherLimb)
     rospy.on_shutdown(traj.stop)
@@ -105,7 +111,7 @@ def main():
                 attempt = -1
             except:
                 attempt +=1
-                print("what")
+                print("what") #wat
                 time.sleep(3)
         if attempt >= 10:
             print("Connection Dropped\nCLOSING...")
@@ -120,7 +126,7 @@ def main():
         # Excecute based on the command
 
         if command == "wave":
-            wave(traj, 'left')
+            wave(traj, 'l')
             print("test")
         
         # Start message
@@ -150,9 +156,8 @@ def main():
             # Make phrase based on the item number
             if content == '3':
                 tts("I am sorry I am still")
-
             else:
-                cry(traj, 'left')
+                cry(traj, 'l')
 
             time.sleep(1)
 
@@ -181,14 +186,15 @@ def translateCoords(coords):
 
 class Trajectory(object):
     def __init__(self, limb):
-    	ns = "arm_controller/joint_trajectory_action"
+
+        ns = "_arm_controller/follow_joint_trajectory"
 
         self._client = actionlib.SimpleActionClient(
-           limb + ns, JointTrajectoryAction
+           limb + ns, FollowJointTrajectoryAction
         )
-        self._goal = JointTrajectoryActionGoal()
-        rospy.init_node('pr2_mistreatment')
-        server_up = self._client.wait_for_server(timeout=rospy.Duration(10.0))
+        self._goal = FollowJointTrajectoryGoal()
+        # self._client.wait_for_server()
+        server_up = self._client.wait_for_server()
         if not server_up:
             rospy.logerr("Timed out waiting for Joint Trajectory"
                          " Action Server to connect. Start the action server"
@@ -217,56 +223,20 @@ class Trajectory(object):
         return self._client.get_result()
 
     def clear(self, limb):
-        self._goal = JointTrajectoryGoal()
-        self._goal.trajectory.joint_names = [limb + '_' + joint for joint in \
-            ['s0', 's1', 'e0', 'e1', 'w0', 'w1', 'w2']]
-
-
-
-
-
-def cry(traj, limb, t=3.0):
-
-    dt = 1.0
-    #TEAR WIPE POSITIONS
-    tw1 = {
-	    'left': [-0.322519460284, 0.133456328394, -1.97768472852, 2.19320902897, -0.39269908125, 0.316000041943, 3.04917030764],
-		'right': [0.444470932782, 0.19021361748, 2.03214104643, 2.13415076871, -0.131922347607, 0.373524321423, 0.590582602661]
-	}
-
-    tw2 = {
-		'left': [0.255407800891, 0.717136017517, -2.00836434424, 2.46472362812, -0.22012624281, 0.91041759657, 3.04955380283],
-		'right': [0.102776712671, 0.7190534935, 2.63346151459, 2.19435951456, -0.164519439313, 1.02842736079, 1.01204382365]
-	}
-
-    tw3 = {
-		'left': [-0.772359325818, 1.54548564203, -0.112364092584, -1.82428664991, 2.21890320714, 0.426830153741, -0.0567572890869],
-		'right': [0.636602026245, 2.29828671282, -0.107762150226, 0.706781647211, 2.36501487702, -0.147262155469, 1.01587877562]
-	}
-
-
-    p1 = tw1[limb]
-    p2 = tw2[limb]
-    p3 = tw3[limb]
-
-    traj.add_point(p1, t)
-    t+=dt
-    traj.add_point(p2, t)
-    t+=dt
-    traj.add_point(p1,t)
-    t+=dt
-    traj.add_point(p2, t)
-    traj.start()
-    traj.wait(t/2)
-    tts("I am sorry I know that")
-    traj.wait(t/2)
-    traj.clear(limb)
-    moveArmToStart(traj, limb, t = 3.0)
+        self._goal = FollowJointTrajectoryGoal()
+        self._goal.trajectory.joint_names = [limb + joint for joint in \
+            ['_shoulder_pan_joint',
+             '_shoulder_lift_joint',
+             '_upper_arm_roll_joint',
+             '_elbow_flex_joint',
+             '_forearm_roll_joint',
+             '_wrist_flex_joint',
+             '_wrist_roll_joint']]
 
 def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
     startPos = {
-		'left': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
-		'right': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
+		'l': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
+		'r': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
 		}
     traj.add_point(startPos[limb], t)
     trajOther.add_point(startPos[otherLimb], t)
@@ -279,8 +249,8 @@ def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
 
 def moveArmToStart(traj, limb, t=5.0):
     startPos = {
-	'left': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
-	'right': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
+	'l': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
+	'r': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
 	}
     traj.add_point(startPos[limb], t)
     traj.start()
@@ -293,7 +263,7 @@ def wave(traj, limb, t=3.0):
     newWave1 = [0.217825271631, 1.05307780968, -1.98995657481, 2.30902457833, 3.06719458187, -0.450990351123, 3.04878681244]
     newWave2 = [0.416475783435, 1.05307780968, -2.32704885256, 2.17671873552, 2.31055855911, -0.388864129285, 3.04840331724]
 
-    if limb != "left":
+    if limb != "l":
         newWave1 = translateCoords(newWave1)
         newWave2 = translateCoords(newWave2)
    
@@ -313,6 +283,44 @@ def wave(traj, limb, t=3.0):
     traj.wait(t/2)    
     traj.clear(limb)
     moveArmToStart(traj, limb, 2.5)
+
+def cry(traj, limb, t=3.0):
+
+    dt = 1.0
+    #TEAR WIPE POSITIONS
+    tw1 = {
+        'l': [-0.322519460284, 0.133456328394, -1.97768472852, 2.19320902897, -0.39269908125, 0.316000041943, 3.04917030764],
+        'r': [0.444470932782, 0.19021361748, 2.03214104643, 2.13415076871, -0.131922347607, 0.373524321423, 0.590582602661]
+    }
+
+    tw2 = {
+        'l': [0.255407800891, 0.717136017517, -2.00836434424, 2.46472362812, -0.22012624281, 0.91041759657, 3.04955380283],
+        'r': [0.102776712671, 0.7190534935, 2.63346151459, 2.19435951456, -0.164519439313, 1.02842736079, 1.01204382365]
+    }
+
+    tw3 = {
+        'l': [-0.772359325818, 1.54548564203, -0.112364092584, -1.82428664991, 2.21890320714, 0.426830153741, -0.0567572890869],
+        'r': [0.636602026245, 2.29828671282, -0.107762150226, 0.706781647211, 2.36501487702, -0.147262155469, 1.01587877562]
+    }
+
+
+    p1 = tw1[limb]
+    p2 = tw2[limb]
+    p3 = tw3[limb]
+
+    traj.add_point(p1, t)
+    t+=dt
+    traj.add_point(p2, t)
+    t+=dt
+    traj.add_point(p1,t)
+    t+=dt
+    traj.add_point(p2, t)
+    traj.start()
+    traj.wait(t/2)
+    tts("I am sorry I know that")
+    traj.wait(t/2)
+    traj.clear(limb)
+    moveArmToStart(traj, limb, t = 3.0)
     
 if __name__ == "__main__":
     main()
