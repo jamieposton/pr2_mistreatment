@@ -19,11 +19,15 @@ from trajectory_msgs.msg import (
 from control_msgs.msg import (
     FollowJointTrajectoryAction, 
     FollowJointTrajectoryGoal,
+    PointHeadAction,
+    PointHeadGoal
 ) 
 
 from sensor_msgs.msg import (
     Image,
 )
+
+from geometry_msgs.msg import PointStamped
 
 import os
 import sys
@@ -67,10 +71,14 @@ def main():
 
     traj = Trajectory(limb)
     trajOther = Trajectory(otherLimb)
+    trajHead = HeadTrajectory()
+
     rospy.on_shutdown(traj.stop)
     rospy.on_shutdown(trajOther.stop)
+    rospy.on_shutdown(trajHead.stop)
 
     moveArmsToStart(traj, trajOther, limb, otherLimb)
+    moveHeadToStart(trajHead)
 
 
     # set up socket for TCP connection to get external IP
@@ -127,8 +135,7 @@ def main():
 
         if command == "wave":
             wave(traj, 'l')
-            print("test")
-        
+
         # Start message
         if command == "start":
             tts("Hello you have two minutes")
@@ -148,16 +155,23 @@ def main():
         # Happy face
         elif command == "happy":
             tts("Yipeeeee")
+            nod(trajHead, 1)
             time.sleep(1)
 
         # Sad face
         elif command == "sad":
-
             # Make phrase based on the item number
             if content == '3':
+                lookAt(trajHead, 5,0,-1, 3)
+                slump(traj, trajOther, 'l', 'r')
                 tts("I am sorry I am still")
+                time.sleep(1)
             else:
-                cry(traj, 'l')
+                slump(traj, trajOther, 'l', 'r')
+                tts("I am sorry I know that")
+                shake(trajHead, 3)
+            moveArmsToStart(traj, trajOther, 'l', 'r', 3)
+            moveHeadToStart(trajHead)
 
             time.sleep(1)
 
@@ -183,6 +197,55 @@ def translateCoords(coords):
     for i in range(7):
         newCoords.append(coords[i]*translate[i])
     return newCoords
+
+class HeadTrajectory():
+    def __init__(self):
+        self._client = actionlib.SimpleActionClient(
+           "/head_traj_controller/point_head_action",
+           PointHeadAction
+        )
+
+        self._goal = PointHeadGoal()
+
+        server_up = self._client.wait_for_server()
+        if not server_up:
+            rospy.logerr("Timed out waiting for HeadTrajectory"
+                         " Action Server to connect. Start the action server"
+                         " before running example.")
+            rospy.signal_shutdown("Timed out waiting for Action Server")
+            sys.exit(1)
+        self.clear()
+
+    def add_point(self, x, y, z):
+        point = PointStamped()
+        point.header.frame_id = "base_link"
+        point.point.x = x
+        point.point.y = y
+        point.point.z = z
+        self._goal.target = point
+
+        self._goal.pointing_frame = "high_def_frame"
+        self._goal.pointing_axis.x = 1
+        self._goal.pointing_axis.y = 0
+        self._goal.pointing_axis.z = 0
+        self._goal.min_duration = rospy.Duration(0.5)
+        self._goal.max_velocity = 1.0
+
+    def start(self):
+        self._goal.target.header.stamp = rospy.Time.now()
+        self._client.send_goal(self._goal)
+
+    def stop(self):
+        self._client.cancel_goal()
+
+    def wait(self, timeout=15.0):
+        self._client.wait_for_result(timeout=rospy.Duration(timeout))
+
+    def result(self):
+        return self._client.get_result()
+
+    def clear(self):
+        self._goal = PointHeadGoal()
 
 class Trajectory(object):
     def __init__(self, limb):
@@ -233,11 +296,31 @@ class Trajectory(object):
              '_wrist_flex_joint',
              '_wrist_roll_joint']]
 
+def lookAt(traj, x,y,z, t=5.0):
+    traj.add_point(x,y,z)
+    traj.start()
+    traj.wait(t)
+    traj.clear()
+
+def nod(traj, t=5.0):
+    for i in range(2):
+        lookAt(traj, 5,0,2, t/3)
+        lookAt(traj, 5,0,-1, t/3)
+    moveHeadToStart(traj)
+
+def shake(traj, t=5.0):
+    for i in range(3):
+        lookAt(traj, 5,2,-0.5, t/3)
+        lookAt(traj, 5,-2,-0.5, t/3)
+
+def moveHeadToStart(traj, t=5.0):
+    lookAt(traj, 10,0,0, t)
+
 def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
     startPos = {
-		'l': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
-		'r': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
-		}
+      'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
+        'r': [-0.75, 0.0, -1.6, -1.5, 0.0, 1.0, 1.5]
+    }
     traj.add_point(startPos[limb], t)
     trajOther.add_point(startPos[otherLimb], t)
     traj.start()
@@ -248,10 +331,15 @@ def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
     trajOther.clear(otherLimb)
 
 def moveArmToStart(traj, limb, t=5.0):
+#Original start position values
     startPos = {
-	'l': [0.657694262054, 0.216674786041, -1.60224293112, 1.90980607874, 1.13706325772, 1.3161555145, 2.82866056963],
-	'r': [-0.325587421857, 0.126553414856, 1.45613126124, 1.86186917917, -1.0845244158, 1.18576714768, -0.261543724036]
+    	'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
+        'r': [-0.75, 0.0, -1.6, -1.5, 0.0, 1.0, 1.5]
 	}
+    # startPos = {
+    #   'l': [0.75, 0.25, 1.75, -1.5, -0.0, 0.0, -1.5],
+    #     'r': [-0.75, 0.25, -1.75, -1.5, 0.0, 1.0, 1.5]
+    # }
     traj.add_point(startPos[limb], t)
     traj.start()
     traj.wait(t)
@@ -260,14 +348,16 @@ def moveArmToStart(traj, limb, t=5.0):
 
 def wave(traj, limb, t=3.0):
     #WAVE POSITIONS
-    newWave1 = [0.217825271631, 1.05307780968, -1.98995657481, 2.30902457833, 3.06719458187, -0.450990351123, 3.04878681244]
-    newWave2 = [0.416475783435, 1.05307780968, -2.32704885256, 2.17671873552, 2.31055855911, -0.388864129285, 3.04840331724]
+    newWave1 = [0.75, 0.0, 0.0, -2.0, 0.0, 0.0, -1.5]
+    #for right -0.75, 0.0, 0.0, -2.0, 0.0, 1.0, 1.5
+    newWave2 = [0.75, 0.0, 0.0, -1.5, 0.0, 0.0, -1.5]
+    #for right -0.75, 0.0, 0.0, -1.5, 0.0, 1.0, 1.5
 
     if limb != "l":
         newWave1 = translateCoords(newWave1)
         newWave2 = translateCoords(newWave2)
    
-    dt = 0.75
+    dt = 1.0
     traj.add_point(newWave1, t)
     t+= dt
     traj.add_point(newWave2, t)
@@ -284,43 +374,22 @@ def wave(traj, limb, t=3.0):
     traj.clear(limb)
     moveArmToStart(traj, limb, 2.5)
 
-def cry(traj, limb, t=3.0):
+def slump(traj, trajOther, limb, otherLimb, t=3.0):
 
-    dt = 1.0
-    #TEAR WIPE POSITIONS
-    tw1 = {
-        'l': [-0.322519460284, 0.133456328394, -1.97768472852, 2.19320902897, -0.39269908125, 0.316000041943, 3.04917030764],
-        'r': [0.444470932782, 0.19021361748, 2.03214104643, 2.13415076871, -0.131922347607, 0.373524321423, 0.590582602661]
-    }
-
-    tw2 = {
-        'l': [0.255407800891, 0.717136017517, -2.00836434424, 2.46472362812, -0.22012624281, 0.91041759657, 3.04955380283],
-        'r': [0.102776712671, 0.7190534935, 2.63346151459, 2.19435951456, -0.164519439313, 1.02842736079, 1.01204382365]
-    }
-
-    tw3 = {
-        'l': [-0.772359325818, 1.54548564203, -0.112364092584, -1.82428664991, 2.21890320714, 0.426830153741, -0.0567572890869],
-        'r': [0.636602026245, 2.29828671282, -0.107762150226, 0.706781647211, 2.36501487702, -0.147262155469, 1.01587877562]
+    sadPos = {
+        'l': [0.75, 0.25, 1.75, -1.5, -0.0, 0.0, -1.5],
+        'r': [-0.75, 0.25, -1.75, -1.5, 0.0, 1.0, 1.5]
     }
 
 
-    p1 = tw1[limb]
-    p2 = tw2[limb]
-    p3 = tw3[limb]
-
-    traj.add_point(p1, t)
-    t+=dt
-    traj.add_point(p2, t)
-    t+=dt
-    traj.add_point(p1,t)
-    t+=dt
-    traj.add_point(p2, t)
+    traj.add_point(sadPos[limb], t)
+    trajOther.add_point(sadPos[otherLimb], t)
     traj.start()
-    traj.wait(t/2)
-    tts("I am sorry I know that")
-    traj.wait(t/2)
+    trajOther.start()
+    traj.wait(t)
+    trajOther.wait(t)
     traj.clear(limb)
-    moveArmToStart(traj, limb, t = 3.0)
+    trajOther.clear(otherLimb)
     
 if __name__ == "__main__":
     main()
