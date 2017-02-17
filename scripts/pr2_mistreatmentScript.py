@@ -31,8 +31,12 @@ from geometry_msgs.msg import PointStamped
 
 import os
 import sys
-import cv2
-import cv_bridge
+
+import roslib; roslib.load_manifest('sound_yak')
+
+from sound_play.msg import SoundRequest
+from sound_play.libsoundplay import SoundClient
+from sound_yak.msg import yak_cmd
 
 import time
 import socket
@@ -61,6 +65,13 @@ def main():
 
     print("Initializing node... ")
     rospy.init_node("pr2_mistreatment")
+
+    print("Initializing sound... ")
+    global yak
+    yak = yak_cmd()
+    global pub
+    pub = rospy.Publisher('yak', yak_cmd)
+
     print("Running. Ctrl-c to quit")
 
     otherLimb = ""
@@ -189,7 +200,9 @@ def main():
 
 # Speaks the given string
 def tts(text):
-   os.system("aplay 'Sounds/%s.wav'"%text)
+    yak.cmd = 'wav'
+    yak.param = text + ".wav"
+    pub.publish(yak)
 
 def translateCoords(coords):
     translate = [-1,1,-1,1,-1,1,1]
