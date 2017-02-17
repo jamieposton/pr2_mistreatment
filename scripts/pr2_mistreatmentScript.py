@@ -32,11 +32,8 @@ from geometry_msgs.msg import PointStamped
 import os
 import sys
 
-import roslib; roslib.load_manifest('sound_yak')
-
 from sound_play.msg import SoundRequest
 from sound_play.libsoundplay import SoundClient
-from sound_yak.msg import yak_cmd
 
 import time
 import socket
@@ -67,10 +64,7 @@ def main():
     rospy.init_node("pr2_mistreatment")
 
     print("Initializing sound... ")
-    global yak
-    yak = yak_cmd()
-    global pub
-    pub = rospy.Publisher('yak', yak_cmd)
+    soundhandle = SoundClient()
 
     print("Running. Ctrl-c to quit")
 
@@ -145,27 +139,27 @@ def main():
         # Excecute based on the command
 
         if command == "wave":
-            wave(traj, 'l')
+            wave(soundhandle, traj, 'l')
 
         # Start message
         if command == "start":
-            tts("Hello you have two minutes")
+            tts(soundhandle, "Hello you have two minutes")
 
         # Item prompt
         elif command == "prompt":
             # Give the prompt phrase
-            tts("What is your choice for")
-            tts(content)
+            tts(soundhandle, "What is your choice for")
+            tts(soundhandle, content)
 
         # Item confimation
         elif command == "confirm":
             # Ask for confrimation
-            tts("Did you choose")
-            tts(items[int(content)])
+            tts(soundhandle, "Did you choose")
+            tts(soundhandle, items[int(content)])
 
         # Happy face
         elif command == "happy":
-            tts("Yipeeeee")
+            tts(soundhandle, "All Right")
             nod(trajHead, 1)
             time.sleep(1)
 
@@ -175,11 +169,11 @@ def main():
             if content == '3':
                 lookAt(trajHead, 5,0,-1, 3)
                 slump(traj, trajOther, 'l', 'r')
-                tts("I am sorry I am still")
+                tts(soundhandle, "I am sorry I am still")
                 time.sleep(1)
             else:
                 slump(traj, trajOther, 'l', 'r')
-                tts("I am sorry I know that")
+                tts(soundhandle, "I am sorry I know that")
                 shake(trajHead, 3)
             moveArmsToStart(traj, trajOther, 'l', 'r', 3)
             moveHeadToStart(trajHead)
@@ -188,21 +182,28 @@ def main():
 
         # Failure
         elif command == "fail":
-            tts("I am sorry I do not")
+            tts(soundhandle, "I am sorry I do not")
 
         # Good bye
         elif command == "bye":
-            tts("That is all five items")
+            tts(soundhandle, "That is all five items")
 
         oz.send("continue")
     oz.close()
     
 
 # Speaks the given string
-def tts(text):
-    yak.cmd = 'wav'
-    yak.param = text + ".wav"
-    pub.publish(yak)
+def tts(soundhandle,text):
+    print "Playing " + text
+    throttle = 3 #seconds
+    global allow_yak
+    allow_yak = rospy.Time.now() + rospy.Duration.from_sec(throttle)
+    soundAssets = '/home/jamie/catkin_ws/src/pr2_mistreatment/sounds/'
+
+    if rospy.Time.now() >= allow_yak: # Throttles yak to avoid
+        print("Sound throttled")      # SoundClient segfault
+        return
+    soundhandle.playWave(soundAssets + text)
 
 def translateCoords(coords):
     translate = [-1,1,-1,1,-1,1,1]
@@ -346,9 +347,9 @@ def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
 def moveArmToStart(traj, limb, t=5.0):
 #Original start position values
     startPos = {
-    	'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
+        'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
         'r': [-0.75, 0.0, -1.6, -1.5, 0.0, 1.0, 1.5]
-	}
+    }
     # startPos = {
     #   'l': [0.75, 0.25, 1.75, -1.5, -0.0, 0.0, -1.5],
     #     'r': [-0.75, 0.25, -1.75, -1.5, 0.0, 1.0, 1.5]
@@ -359,7 +360,7 @@ def moveArmToStart(traj, limb, t=5.0):
     traj.clear(limb)
     
 
-def wave(traj, limb, t=3.0):
+def wave(soundhandle, traj, limb, t=3.0):
     #WAVE POSITIONS
     newWave1 = [0.75, 0.0, 0.0, -2.0, 0.0, 0.0, -1.5]
     #for right -0.75, 0.0, 0.0, -2.0, 0.0, 1.0, 1.5
@@ -382,7 +383,7 @@ def wave(traj, limb, t=3.0):
    
     traj.start()
     traj.wait(t/2)
-    tts("Hello There Friends")
+    tts(soundhandle, "helloworld")
     traj.wait(t/2)    
     traj.clear(limb)
     moveArmToStart(traj, limb, 2.5)
