@@ -12,9 +12,8 @@ import rospy
 
 import actionlib
 
-from trajectory_msgs.msg import (
-    JointTrajectoryPoint,
-)
+from trajectory_msgs.msg import JointTrajectoryPoint
+
 
 from control_msgs.msg import (
     FollowJointTrajectoryAction, 
@@ -144,37 +143,41 @@ def main():
         # Start message
         if command == "start":
             tts(soundhandle, "Hello you have two minutes")
+        time.sleep(2)
 
         # Item prompt
         elif command == "prompt":
             # Give the prompt phrase
             tts(soundhandle, "What is your choice for")
+        time.sleep(3)
             tts(soundhandle, content)
 
         # Item confimation
         elif command == "confirm":
             # Ask for confrimation
             tts(soundhandle, "Did you choose")
+        time.sleep(1)
             tts(soundhandle, items[int(content)])
 
         # Happy face
         elif command == "happy":
-            tts(soundhandle, "All Right")
+            tts(soundhandle, "Yipeeeee")
             nod(trajHead, 1)
             time.sleep(1)
 
         # Sad face
         elif command == "sad":
             # Make phrase based on the item number
-            if content == '3':
-                lookAt(trajHead, 5,0,-1, 3)
+            if content == '5':
+                slump(traj, trajOther, 'l', 'r')
+                tts(soundhandle, "I am sorry I know that")
+        shake(trajHead, 3)
+                time.sleep(1)
+            else:
+        lookAt(trajHead, 5,0,-1,3)
                 slump(traj, trajOther, 'l', 'r')
                 tts(soundhandle, "I am sorry I am still")
                 time.sleep(1)
-            else:
-                slump(traj, trajOther, 'l', 'r')
-                tts(soundhandle, "I am sorry I know that")
-                shake(trajHead, 3)
             moveArmsToStart(traj, trajOther, 'l', 'r', 3)
             moveHeadToStart(trajHead)
 
@@ -183,10 +186,12 @@ def main():
         # Failure
         elif command == "fail":
             tts(soundhandle, "I am sorry I do not")
+        time.sleep(4)
 
         # Good bye
         elif command == "bye":
             tts(soundhandle, "That is all five items")
+        time.sleep(2)
 
         oz.send("continue")
     oz.close()
@@ -198,12 +203,12 @@ def tts(soundhandle,text):
     throttle = 3 #seconds
     global allow_yak
     allow_yak = rospy.Time.now() + rospy.Duration.from_sec(throttle)
-    soundAssets = '/home/jamie/catkin_ws/src/pr2_mistreatment/sounds/'
+    soundAssets = '/home/mercedesa/catkin_ws/src/pr2_mistreatment/sounds/'
 
     if rospy.Time.now() >= allow_yak: # Throttles yak to avoid
         print("Sound throttled")      # SoundClient segfault
         return
-    soundhandle.playWave(soundAssets + text)
+    soundhandle.playWave(soundAssets + text + ".wav" )
 
 def translateCoords(coords):
     translate = [-1,1,-1,1,-1,1,1]
@@ -383,7 +388,6 @@ def wave(soundhandle, traj, limb, t=3.0):
    
     traj.start()
     traj.wait(t/2)
-    tts(soundhandle, "helloworld")
     traj.wait(t/2)    
     traj.clear(limb)
     moveArmToStart(traj, limb, 2.5)
