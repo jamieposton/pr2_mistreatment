@@ -36,12 +36,20 @@ from sound_play.libsoundplay import SoundClient
 
 import time
 import socket
+import random
 
 # Quit flag
 quit = False
 
 # Dictionary of items
 items = {1 : "a shaving mirror", 2 : "a five gallon can of", 3 : "a case of army rations", 4 : "an atlas of the pacific", 5 : "a floating seat cushion", 6 : "a small transistor radio", 7 : "the shark repellent", 8 : "fifteen feet of nylon", 9 : "two boxes of chocolate bars", 10 : "a fishing kit"}
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 def main():
     """
@@ -65,7 +73,7 @@ def main():
     print("Initializing sound... ")
     soundhandle = SoundClient()
 
-    print("Running. Ctrl-c to quit")
+    print("Initializing Arm/Head Positions. Ctrl-d to quit")
 
     otherLimb = ""
     if limb == 'l':
@@ -82,119 +90,130 @@ def main():
     rospy.on_shutdown(trajHead.stop)
 
     moveArmsToStart(traj, trajOther, limb, otherLimb)
+    #wave(soundhandle, traj, 'l')
     moveHeadToStart(trajHead)
-
-
-    # set up socket for TCP connection to get external IP
-    s = socket.socket ( socket.AF_INET, socket.SOCK_STREAM ) # TCP
-
-    # get external IP
-    s.bind ( ( '', 0 ) )
-    s.connect ( ( 'google.com', 80 ) )
-    ThisIP = s.getsockname()[0]
-    s.close()
-
-    # Create the welcome port
-    welcome = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    welcome.bind((ThisIP, 0))
-    welcome.listen(5)
-
-    # Get the port number
-    ThisPort = int ( welcome.getsockname()[1] )
-
-    size = 1024
-
-    socket.setdefaulttimeout(180)
-
-    # Show the IP and port
-    print "IP: " + ThisIP
-    print "Port: " + str(ThisPort)
-
-    # Accept the connection
-    oz, addr = welcome.accept()
 
     # Loop forever
     while not quit:
-        attempt = 0
-        while attempt < 10 and attempt != -1:
-            # Get the command
-            try:
-                data = oz.recv(size)
-                attempt = -1
-            except:
-                attempt +=1
-                print("what") #wat
+        print "New experiment"
+
+        used = []
+
+        # Press enter when it is time to prompt for answers (3 min mark)
+        print "Press enter to wave"
+        ignore = raw_input()
+        wave(soundhandle, traj, 'l')
+
+        ignore = raw_input("Press enter to prompt for answers at the three minute mark")
+        tts(soundhandle, "Hello you have two minutes")
+        time.sleep(2)
+
+        ignore = raw_input("Press enter to start recording answers")
+
+        for i in range(1, 6):
+            itemNum = -1
+            print "This is item number " + str (i)
+
+            # Failure loop
+            loop = True
+            while loop:
+                # Send command for item prompt
+                tts(soundhandle, "What is your choice for")
                 time.sleep(3)
-        if attempt >= 10:
-            print("Connection Dropped\nCLOSING...")
-            oz.close()
-            exit()
-        print data
-        # Get the command and content
-        divide = data.split()
-        command = divide[0]
-        content = divide[1]
+                tts(soundhandle, str(i))
 
-        # Excecute based on the command
+                # Get the item number
+                valid = False
+                while not valid:
+                    itemNum = -1
+                    userInput = raw_input("\nEnter item number, or enter 0 to prompt again: ")
+                    if is_number(userInput):
+                        itemNum = int(userInput.strip())
 
-        if command == "wave":
-            wave(soundhandle, traj, 'l')
+                    if itemNum >= 0 and itemNum < 11:
+                        valid = True
 
-        # Start message
-        if command == "start":
-            tts(soundhandle, "Hello you have two minutes")
-        time.sleep(2)
+                    else:
+                        print "That wasn't a correct item, the item must be between zero and ten"
 
-        # Item prompt
-        elif command == "prompt":
-            # Give the prompt phrase
-            tts(soundhandle, "What is your choice for")
-        time.sleep(3)
-            tts(soundhandle, content)
+                # Check for failure
+                if itemNum == 0:
+                    # Send the failure message
+                    tts(soundhandle, "I am sorry I do not")
+                    time.sleep(4)
+                    print "Fail message given"
+                    # Make a brief pause
+                    time.sleep(1)
+                    continue
+                else:
+                    loop = False
 
-        # Item confimation
-        elif command == "confirm":
-            # Ask for confrimation
-            tts(soundhandle, "Did you choose")
-        time.sleep(1)
-            tts(soundhandle, items[int(content)])
+                used.append(itemNum)
 
-        # Happy face
-        elif command == "happy":
-            tts(soundhandle, "Yipeeeee")
-            nod(trajHead, 1)
-            time.sleep(1)
+                # If this is test 1,2 or 4, give the right answer
+                if i == 1 or i == 2 or i == 4:
+                    #used.append(itemNum)
+                    print "Correct item used"
 
-        # Sad face
-        elif command == "sad":
-            # Make phrase based on the item number
-            if content == '5':
-                slump(traj, trajOther, 'l', 'r')
-                tts(soundhandle, "I am sorry I know that")
-        shake(trajHead, 3)
+                # Else pick a random wrong answer
+                else:
+                    flag = True
+                    while flag:
+                        itemNum = random.randrange(1,10)
+                        if itemNum not in used:
+                            flag = False
+
+                    used.append(itemNum)
+                    print "Wrong item used"
+
+            loop = True
+            while loop:
+                # Send confirm message
+                tts(soundhandle, "Did you choose")
                 time.sleep(1)
-            else:
-        lookAt(trajHead, 5,0,-1,3)
-                slump(traj, trajOther, 'l', 'r')
-                tts(soundhandle, "I am sorry I am still")
+                tts(soundhandle, items[int(itemNum)])
+
+                # Wait to give response
+                check = raw_input("\nEnter when response given, or 0 to prompt again: ") .strip()
+
+                # Check for failure
+                if check == '0':
+                    # Send the failure message
+                    tts(soundhandle, "I am sorry I do not")
+                    time.sleep(4)
+                    print "Fail message given"
+                    # Make a brief pause
+                    time.sleep(1)
+                    continue
+                else:
+                    loop = False
+
+                # If this is test 1,2,4 then give the happy response
+                if i == 1 or i == 2 or i == 4:
+                    tts(soundhandle, "Yipeeeee")
+                    nod(trajHead, 1)
+                    time.sleep(1)
+
+                # Else give the sad response based on the trial number
+                else:
+                    if i == 5:
+                        slump(traj, trajOther, 'l', 'r')
+                        tts(soundhandle, "I am sorry I know that")
+                        shake(trajHead, 3)
+                        time.sleep(1)
+                    else:
+                        lookAt(trajHead, 5,0,-1,3)
+                        slump(traj, trajOther, 'l', 'r')
+                        tts(soundhandle, "I am sorry I am still")
+                        time.sleep(1)
+                    moveArmsToStart(traj, trajOther, 'l', 'r', 3)
+                    moveHeadToStart(trajHead)
+
                 time.sleep(1)
-            moveArmsToStart(traj, trajOther, 'l', 'r', 3)
-            moveHeadToStart(trajHead)
 
-            time.sleep(1)
-
-        # Failure
-        elif command == "fail":
-            tts(soundhandle, "I am sorry I do not")
-        time.sleep(4)
-
-        # Good bye
-        elif command == "bye":
-            tts(soundhandle, "That is all five items")
+        # Say goodbye
+        tts(soundhandle, "That is all five items")
         time.sleep(2)
-
-        oz.send("continue")
-    oz.close()
     
 
 # Speaks the given string
@@ -235,7 +254,7 @@ class HeadTrajectory():
             sys.exit(1)
         self.clear()
 
-    def add_point(self, x, y, z):
+    def add_point(self, x, y, z, vel):
         point = PointStamped()
         point.header.frame_id = "base_link"
         point.point.x = x
@@ -248,7 +267,7 @@ class HeadTrajectory():
         self._goal.pointing_axis.y = 0
         self._goal.pointing_axis.z = 0
         self._goal.min_duration = rospy.Duration(0.5)
-        self._goal.max_velocity = 1.0
+        self._goal.max_velocity = vel
 
     def start(self):
         self._goal.target.header.stamp = rospy.Time.now()
@@ -315,8 +334,8 @@ class Trajectory(object):
              '_wrist_flex_joint',
              '_wrist_roll_joint']]
 
-def lookAt(traj, x,y,z, t=5.0):
-    traj.add_point(x,y,z)
+def lookAt(traj, x,y,z, vel=1.0, t=5.0):
+    traj.add_point(x,y,z, vel)
     traj.start()
     traj.wait(t)
     traj.clear()
@@ -340,6 +359,7 @@ def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
       'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
         'r': [-0.75, 0.0, -1.6, -1.5, 0.0, 1.0, 1.5]
     }
+
     traj.add_point(startPos[limb], t)
     trajOther.add_point(startPos[otherLimb], t)
     traj.start()
@@ -350,33 +370,38 @@ def moveArmsToStart(traj, trajOther, limb, otherLimb, t=5.0):
     trajOther.clear(otherLimb)
 
 def moveArmToStart(traj, limb, t=5.0):
-#Original start position values
     startPos = {
         'l': [0.75, 0.0, 1.6, -1.5, -0.0, 0.0, -1.5],
         'r': [-0.75, 0.0, -1.6, -1.5, 0.0, 1.0, 1.5]
     }
-    # startPos = {
-    #   'l': [0.75, 0.25, 1.75, -1.5, -0.0, 0.0, -1.5],
-    #     'r': [-0.75, 0.25, -1.75, -1.5, 0.0, 1.0, 1.5]
-    # }
     traj.add_point(startPos[limb], t)
     traj.start()
     traj.wait(t)
     traj.clear(limb)
     
 
-def wave(soundhandle, traj, limb, t=3.0):
+def wave(soundhandle, traj, limb, t=2.25):
+
+            # '_shoulder_pan_joint',
+            #  '_shoulder_lift_joint',
+            #  '_upper_arm_roll_joint',
+            #  '_elbow_flex_joint',
+            #  '_forearm_roll_joint',
+            #  '_wrist_flex_joint',
+            #  '_wrist_roll_joint'
+
     #WAVE POSITIONS
-    newWave1 = [0.75, 0.0, 0.0, -2.0, 0.0, 0.0, -1.5]
+    # newWave = [0.9, -0.05, 0.0, -1.75, 0.0, -0.5, -1.5]
+    newWave1 = [0.9, -0.075, 0.0, -2.0, 0.1, -0.4, -1.5]
     #for right -0.75, 0.0, 0.0, -2.0, 0.0, 1.0, 1.5
-    newWave2 = [0.75, 0.0, 0.0, -1.5, 0.0, 0.0, -1.5]
+    newWave2 = [0.9, 0.075, -0.1, -1.6, 0., 0.0, -1.5]
     #for right -0.75, 0.0, 0.0, -1.5, 0.0, 1.0, 1.5
 
     if limb != "l":
         newWave1 = translateCoords(newWave1)
         newWave2 = translateCoords(newWave2)
    
-    dt = 1.0
+    dt = 1.5
     traj.add_point(newWave1, t)
     t+= dt
     traj.add_point(newWave2, t)
@@ -408,6 +433,21 @@ def slump(traj, trajOther, limb, otherLimb, t=3.0):
     trajOther.wait(t)
     traj.clear(limb)
     trajOther.clear(otherLimb)
+
+def idle(trajhead, t=3.0):
+
+    headPos = [
+        [5,     2,      0       ],
+        [5,     -2,     0       ],
+        [10,    0,      0       ],
+        [10,    0,      -1      ],
+    ]
+    
+    currentIndex = random.randint(0,len(headPos)-1)
+    print "random: "
+    print currentIndex
+    lookAt(trajhead, headPos[currentIndex][0], 
+        headPos[currentIndex][1], headPos[currentIndex][2], 0.5)
     
 if __name__ == "__main__":
     main()
